@@ -1,6 +1,6 @@
 {
   "isInitialized": true,
-  "telegramUpdateOffset": 711181896,
+  "telegramUpdateOffset": 711181897,
   "users": [
     {
       "chatId": 572265187,
@@ -14,7 +14,7 @@
       "longitude": 27.5618225,
       "timeZoneOffsetSeconds": 10800,
       "lastSentDate": "2026-09-26",
-      "updatedAt": "2026-09-25T13:08:00.1898883+00:00"
+      "updatedAt": "2026-09-25T17:35:11.6990079+00:00"
     }
   ]
 }
