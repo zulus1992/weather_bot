@@ -1,0 +1,81 @@
+name: Weather bot
+
+# Бот работает без постоянно запущенного процесса: workflow просыпается каждый час,
+# читает очередь сообщений Telegram, отвечает на команды и рассылает прогноз тем,
+# у кого в часовом поясе их города уже наступил выбранный час (по умолчанию 18:00).
+on:
+  schedule:
+    - cron: "10 * * * *"
+  workflow_dispatch:
+    inputs:
+      force_send:
+        description: "Отправить прогноз немедленно, не дожидаясь часа рассылки"
+        type: boolean
+        default: false
+      dry_run:
+        description: "Ничего не отправлять в Telegram, только вывести текст в лог"
+        type: boolean
+        default: false
+      print_forecast:
+        description: "Напечатать прогноз на завтра для города (например: Москва) и выйти"
+        type: string
+        default: ""
+
+permissions:
+  contents: write
+
+# Два запуска одновременно могут подраться за state.json, поэтому выстраиваем их в очередь.
+concurrency:
+  group: weather-bot
+  cancel-in-progress: false
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    env:
+      DOTNET_NOLOGO: "true"
+      DOTNET_CLI_TELEMETRY_OPTOUT: "true"
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Установка .NET 8
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "8.0.x"
+
+      - name: Восстановление зависимостей
+        run: dotnet restore WeatherBot.sln
+
+      - name: Тесты
+        run: dotnet test WeatherBot.sln --no-restore --nologo
+
+      - name: Запуск бота
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          OPENWEATHER_API_KEY: ${{ secrets.OPENWEATHER_API_KEY }}
+          BOT_PASSWORD: ${{ secrets.BOT_PASSWORD }}
+          BOT_STATE_FILE: state.json
+          BOT_DAILY_SEND_HOUR: ${{ vars.BOT_DAILY_SEND_HOUR || '18' }}
+          BOT_TIMEZONE_OFFSET_HOURS: ${{ vars.BOT_TIMEZONE_OFFSET_HOURS || '3' }}
+          BOT_DRY_RUN: ${{ inputs.dry_run && 'true' || vars.BOT_DRY_RUN || '' }}
+          BOT_FORCE_SEND: ${{ inputs.force_send && 'true' || vars.BOT_FORCE_SEND || '' }}
+        run: |
+          dotnet run --project src/WeatherBot/WeatherBot.csproj --no-restore -- ${{ inputs.print_forecast && format('--print-forecast "{0}"', inputs.print_forecast) || '' }}
+
+      - name: Сохранить состояние в репозитории
+        run: |
+          if [ -z "$(git status --porcelain state.json)" ]; then
+            echo "Состояние не изменилось — коммитить нечего."
+            exit 0
+          fi
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add state.json
+          git commit -m "chore: обновить состояние бота [skip ci]"
+          git pull --rebase --autostash
+          git push
