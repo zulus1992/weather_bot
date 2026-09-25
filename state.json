@@ -1,6 +1,6 @@
 {
   "isInitialized": true,
-  "telegramUpdateOffset": 711181895,
+  "telegramUpdateOffset": 711181896,
   "users": [
     {
       "chatId": 572265187,
@@ -8,7 +8,13 @@
       "firstName": "Dzmitry",
       "isAuthorized": true,
       "isSubscribed": true,
-      "updatedAt": "2026-09-25T13:06:19.2423398+00:00"
+      "city": "Minsk",
+      "countryCode": "BY",
+      "latitude": 53.9024716,
+      "longitude": 27.5618225,
+      "timeZoneOffsetSeconds": 10800,
+      "lastSentDate": "2026-09-26",
+      "updatedAt": "2026-09-25T13:08:00.1898883+00:00"
     }
   ]
 }
