@@ -1,5 +1,14 @@
 {
   "isInitialized": true,
-  "telegramUpdateOffset": 0,
-  "users": []
+  "telegramUpdateOffset": 711181888,
+  "users": [
+    {
+      "chatId": 572265187,
+      "userName": "BoltromukD",
+      "firstName": "Dzmitry",
+      "isAuthorized": true,
+      "isSubscribed": true,
+      "updatedAt": "2026-09-25T12:46:03.3719646+00:00"
+    }
+  ]
 }
