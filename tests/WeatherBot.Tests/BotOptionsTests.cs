@@ -2,6 +2,7 @@ using WeatherBot.Configuration;
 
 namespace WeatherBot.Tests;
 
+[Collection(EnvironmentVariablesCollection.Name)]
 public sealed class BotOptionsTests
 {
     private const string TokenVariable = "TELEGRAM_BOT_TOKEN";

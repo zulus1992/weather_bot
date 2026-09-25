@@ -71,6 +71,15 @@ internal sealed class RecordingSender : IMessageSender
     }
 }
 
+/// <summary>
+/// Коллекция для тестов, которые меняют переменные окружения процесса: xUnit выполняет тесты одной
+/// коллекции последовательно, поэтому такие тесты не мешают друг другу.
+/// </summary>
+internal static class EnvironmentVariablesCollection
+{
+    internal const string Name = "Переменные окружения";
+}
+
 /// <summary>Подменяет переменные окружения на время теста и возвращает их обратно.</summary>
 internal sealed class EnvironmentScope : IDisposable
 {

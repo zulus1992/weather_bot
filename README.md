@@ -17,6 +17,7 @@
 | Часовые пояса | Смещение берётся из ответа OpenWeatherMap для города; пока город не выбран — `BOT_TIMEZONE_OFFSET_HOURS` (по умолчанию +3) |
 | Только личные чаты | Сообщения из групп и каналов игнорируются, чтобы бот не мешал в общих чатах |
 | Режимы отладки | `--dry-run` (печать вместо отправки), `--force-send` (слать немедленно), `--print-forecast "Москва"` (посмотреть прогноз из консоли) |
+| Локальные секреты | Токен, ключ и пароль можно не экспортировать вручную: `secrets.json`, `secret.json`, `.env` или `dotnet user-secrets` |
 
 ### Команды бота
 
@@ -58,7 +59,9 @@ GitHub Actions (cron: каждый час)
 WeatherBot.sln
 src/WeatherBot/
 ├── Program.cs                       # точка входа, сборка зависимостей, режим --print-forecast
-├── Configuration/BotOptions.cs      # аргументы командной строки + переменные окружения
+├── Configuration/
+│   ├── BotOptions.cs                # аргументы командной строки + переменные окружения
+│   └── SecretsLoader.cs             # локальные секреты: secrets.json, .env, dotnet user-secrets
 ├── Models/
 │   ├── BotState.cs                  # состояние: служебные поля + список пользователей
 │   ├── BotUser.cs                   # пользователь: доступ, город, координаты, пояс, подписка
@@ -77,8 +80,9 @@ src/WeatherBot/
     ├── TelegramNotifier.cs          # IMessageSender: отправка через Telegram.Bot (+ dry-run)
     ├── JsonStateStore.cs            # IStateStore: чтение/запись state.json
     └── ConsoleLog.cs                # логи с отметкой времени
-tests/WeatherBot.Tests/              # xUnit: 168 тестов; сеть, время и Telegram подменяются
+tests/WeatherBot.Tests/              # xUnit: 187 тестов; сеть, время и Telegram подменяются
 .github/workflows/weather-bot.yml    # hourly cron, тесты, запуск бота, коммит state.json
+secrets.example.json                 # шаблон локальных секретов (сам secrets.json — в .gitignore)
 ```
 
 ## Настройка
@@ -98,6 +102,7 @@ tests/WeatherBot.Tests/              # xUnit: 168 тестов; сеть, вре
 3. Создайте бота у [@BotFather](https://t.me/BotFather) и сохраните токен.
 4. Придумайте пароль, который бот будет спрашивать у пользователей.
 5. Добавьте секреты и переменные репозитория: `Settings → Secrets and variables → Actions`.
+   Локально те же значения можно не экспортировать вручную, а положить в файл — см. «Локальные секреты».
 
 ### Секреты и переменные GitHub Actions
 
@@ -137,12 +142,15 @@ tests/WeatherBot.Tests/              # xUnit: 168 тестов; сеть, вре
 | `--send-hour` | `BOT_DAILY_SEND_HOUR` | `18` | Час рассылки в местном времени города: `0`–`23` |
 | `--dry-run` | `BOT_DRY_RUN` | `false` | Печатать сообщения в лог вместо отправки |
 | `--force-send` | `BOT_FORCE_SEND` | `false` | Отправить прогноз немедленно, даже если сегодня уже отправляли |
+| `--secrets "<файл>"` | `BOT_SECRETS_FILE` | — | Явный путь к файлу секретов вместо автоматического поиска (см. «Локальные секреты») |
 
 Аргументы можно писать и как `--send-hour 20`, и как `--send-hour=20`; флаги (`--dry-run`, `--force-send`)
 значения не требуют. Некорректное значение (например `--send-hour 25`) приводит к понятному сообщению
 и выходу с кодом 1.
 
 ### Запуск локально
+
+Секреты можно передать двумя способами: переменными окружения (ниже) или файлом — см. «Локальные секреты».
 
 ```bash
 # bash / Linux / macOS
@@ -176,6 +184,61 @@ dotnet run --project src/WeatherBot -- --print-forecast "Москва"
 появится `state.json` — это тот же файл, который workflow коммитит в репозиторий, и его удобно
 просматривать глазами.
 
+### Локальные секреты
+
+Чтобы не экспортировать переменные в каждом окне терминала, положите секреты в файл. Бот ищет его в таком
+порядке (`src/WeatherBot/Configuration/SecretsLoader.cs`):
+
+1. путь из аргумента `--secrets "<файл>"` или переменной `BOT_SECRETS_FILE` — если файла нет, бот
+   останавливается с понятной ошибкой;
+2. `secrets.json`, `secret.json` или `.env` в рабочем каталоге (обычно это корень репозитория);
+3. файл `dotnet user-secrets` текущего проекта: `%APPDATA%\Microsoft\UserSecrets\<UserSecretsId>\secrets.json`.
+
+Используется первый найденный файл. Из него заполняются только те переменные, которые ещё не заданы
+в окружении: переменные окружения и `--аргументы` всегда в приоритете. В лог попадают только имена
+переменных, сами значения никогда не печатаются.
+
+`secrets.json` — плоский список или вложенная секция (именно так пишет `dotnet user-secrets`):
+
+```json
+{
+  "MySecretSettings": {
+    "TELEGRAM_BOT_TOKEN": "123456789:AA...",
+    "OPENWEATHER_API_KEY": "ваш-ключ",
+    "BOT_PASSWORD": "секретный-пароль",
+    "BOT_DAILY_SEND_HOUR": 20
+  }
+}
+```
+
+Имена ключей можно писать как угодно — `TELEGRAM_BOT_TOKEN`, `TelegramBotToken`, `Password`: регистр,
+подчёркивания и дефисы не важны. Кроме трёх обязательных секретов так же можно задать `BOT_STATE_FILE`,
+`BOT_TIMEZONE_OFFSET_HOURS`, `BOT_DAILY_SEND_HOUR`, `BOT_DRY_RUN` и `BOT_FORCE_SEND`.
+
+Готовый шаблон лежит в репозитории — `secrets.example.json`: скопируйте его в `secrets.json`
+и подставьте свои значения.
+
+`.env` — обычный формат `KEY=VALUE` (поддерживаются комментарии `#`, кавычки и `export`):
+
+```bash
+TELEGRAM_BOT_TOKEN=123456789:AA...
+OPENWEATHER_API_KEY=ваш-ключ
+BOT_PASSWORD="секретный-пароль"
+```
+
+Вариант с user-secrets — файл лежит вне репозитория, поэтому случайно закоммитить его нельзя:
+
+```bash
+dotnet user-secrets --project src/WeatherBot init     # уже сделано: UserSecretsId есть в csproj
+dotnet user-secrets --project src/WeatherBot set "MySecretSettings:TELEGRAM_BOT_TOKEN" "123456789:AA..."
+dotnet user-secrets --project src/WeatherBot set "MySecretSettings:OPENWEATHER_API_KEY" "ваш-ключ"
+dotnet user-secrets --project src/WeatherBot set "MySecretSettings:BOT_PASSWORD" "секретный-пароль"
+dotnet user-secrets --project src/WeatherBot list     # проверить, что всё записалось
+```
+
+`secrets.json`, `secret.json` и `.env` добавлены в `.gitignore`. В GitHub Actions эти файлы не нужны:
+там секреты приходят переменными окружения из Secrets репозитория.
+
 ### Ручной запуск в GitHub Actions
 
 `Actions → Weather bot → Run workflow`. Доступны три необязательных параметра:
@@ -202,6 +265,7 @@ dotnet test WeatherBot.sln --filter WeatherServiceTests    # только оди
 | Файл | Что проверяет |
 | --- | --- |
 | `BotOptionsTests.cs` | Разбор `--аргументов` и переменных окружения, значения по умолчанию, валидация `--send-hour` и `--timezone-offset`, приоритет аргументов над окружением |
+| `SecretsLoaderTests.cs` | Локальные секреты: `secrets.json`, `secret.json`, `.env`, файл user-secrets, вложенные секции, `--secrets` и `BOT_SECRETS_FILE`, приоритет заданных переменных, ошибки разбора |
 | `PasswordCheckerTests.cs` | Сравнение пароля: верный, неверный, пустой пароль, чувствительность к регистру |
 | `BotStateTests.cs` | Получение и создание пользователя, обновление профиля, выборка подписчиков |
 | `MessageProcessorTests.cs` | Авторизация по паролю, все команды (`/start`, `/help`, `/login`, `/city`, `/tomorrow`, `/status`, `/stop`, `/subscribe`, `/logout`, `/chatid`), поведение до входа, игнорирование общих чатов, ошибки поиска города и прогноза |
@@ -210,7 +274,7 @@ dotnet test WeatherBot.sln --filter WeatherServiceTests    # только оди
 | `WeatherFormatterTests.cs` | Текст сообщения в HTML и plain text: экранирование, эмодзи, отсутствие данных о порывах и осадках |
 | `WeatherServiceTests.cs` | HTTP-слой: параметры запросов geocoding и forecast, разбор ответов, тексты ошибок (`401`, `404`, `429`, `5xx`, битый JSON, пустой прогноз) на подменённом `HttpMessageHandler` |
 | `JsonStateStoreTests.cs` | Чтение и запись `state.json`: camelCase-имена полей, отсутствие временного файла, создание каталогов, битый JSON, неизвестные поля |
-| `TestData.cs`, `TestDoubles.cs` | Общие примеры данных и подмены: `FakeWeatherService`, `RecordingSender`, `StubHttpMessageHandler`, `FixedTimeProvider`, временный каталог и область переменных окружения |
+| `TestData.cs`, `TestDoubles.cs` | Общие примеры данных и подмены: `FakeWeatherService`, `RecordingSender`, `StubHttpMessageHandler`, `FixedTimeProvider`, временный каталог и область переменных окружения (`EnvironmentScope`, `EnvironmentVariablesCollection`) |
 
 ## Лицензия
 

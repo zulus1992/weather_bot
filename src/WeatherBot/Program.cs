@@ -19,6 +19,18 @@ internal static class Program
     {
         ConfigureConsole();
 
+        // Локальные секреты (secrets.json, .env, dotnet user-secrets) подставляются в переменные
+        // окружения до разбора настроек; уже заданные переменные и --аргументы остаются в приоритете.
+        try
+        {
+            LogSecrets(SecretsLoader.Load(args));
+        }
+        catch (InvalidOperationException exception)
+        {
+            ConsoleLog.Error(exception.Message);
+            return ExitCodeError;
+        }
+
         BotOptions options;
         try
         {
@@ -70,6 +82,39 @@ internal static class Program
         {
             ConsoleLog.Error("Бот завершился с ошибкой", exception);
             return ExitCodeError;
+        }
+    }
+
+    /// <summary>
+    /// Сообщает, откуда взялись секреты. Сами значения никогда не печатаются — только имена переменных.
+    /// </summary>
+    private static void LogSecrets(SecretsLoadResult secrets)
+    {
+        if (secrets.Source is null)
+        {
+            return;
+        }
+
+        if (secrets.NothingMatched)
+        {
+            ConsoleLog.Warning(
+                $"В файле секретов {secrets.Source} нет известных ключей. Ожидаются {SecretsLoader.TelegramBotTokenVariable}, " +
+                $"{SecretsLoader.OpenWeatherApiKeyVariable}, {SecretsLoader.PasswordVariable} — отдельно или внутри секции " +
+                "вида {\"MySecretSettings\": {\"TELEGRAM_BOT_TOKEN\": \"...\"}}.");
+            return;
+        }
+
+        if (secrets.Applied.Count > 0)
+        {
+            ConsoleLog.Info(
+                $"Секреты загружены из {secrets.Source}: {string.Join(", ", secrets.Applied)}");
+        }
+
+        if (secrets.Skipped.Count > 0)
+        {
+            ConsoleLog.Info(
+                "Уже заданы в окружении, поэтому значения из файла не использованы: " +
+                string.Join(", ", secrets.Skipped));
         }
     }
 

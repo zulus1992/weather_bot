@@ -121,7 +121,11 @@ public sealed class BotOptions
         };
     }
 
-    private static Dictionary<string, string?> ParseArguments(string[] args)
+    /// <summary>
+    /// Разбирает аргументы вида <c>--ключ значение</c> и <c>--ключ=значение</c>.
+    /// Используется и настройками, и <see cref="SecretsLoader"/> (аргумент <c>--secrets</c>).
+    /// </summary>
+    internal static Dictionary<string, string?> ParseArguments(string[] args)
     {
         var result = new Dictionary<string, string?>(StringComparer.OrdinalIgnoreCase);
 
