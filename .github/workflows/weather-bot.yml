@@ -58,7 +58,7 @@ jobs:
       - name: Запуск бота
         env:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
-          OPENWEATHER_API_KEY: ${{ secrets.OPENWEATHER_API_KEY }}
+          WEATHERAPI_API_KEY: ${{ secrets.WEATHERAPI_API_KEY }}
           BOT_PASSWORD: ${{ secrets.BOT_PASSWORD }}
           BOT_STATE_FILE: state.json
           BOT_DAILY_SEND_HOUR: ${{ vars.BOT_DAILY_SEND_HOUR || '18' }}

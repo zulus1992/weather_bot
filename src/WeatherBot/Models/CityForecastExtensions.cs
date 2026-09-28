@@ -4,8 +4,8 @@ namespace WeatherBot.Models;
 public static class CityForecastExtensions
 {
     /// <summary>
-    /// Подставляет название города в том виде, как его ввёл пользователь: OpenWeatherMap в ответе на прогноз
-    /// всегда возвращает английское название, а пользователь ожидает своё.
+    /// Подставляет название города в том виде, как его ввёл пользователь: WeatherAPI.com в ответе на прогноз
+    /// возвращает название так, как его знает сервис, а пользователь ожидает своё.
     /// </summary>
     public static CityForecast WithCityFrom(this CityForecast forecast, BotUser user)
     {

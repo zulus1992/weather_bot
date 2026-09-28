@@ -2,26 +2,26 @@ using System.Globalization;
 using System.Net;
 using System.Text.Json;
 using WeatherBot.Models;
-using WeatherBot.Models.OpenWeather;
+using WeatherBot.Models.WeatherApi;
 
 namespace WeatherBot.Services;
 
-/// <summary>Сервис доступа к OpenWeatherMap (геокодирование и прогноз).</summary>
+/// <summary>Сервис доступа к WeatherAPI.com (поиск города и прогноз).</summary>
 public interface IWeatherService
 {
     /// <summary>Ищет город по названию (поддерживаются русские названия).</summary>
     Task<GeoCity?> FindCityAsync(string query, CancellationToken cancellationToken);
 
     /// <summary>Возвращает прогноз на указанную локальную дату города.</summary>
-    /// <exception cref="WeatherServiceException">OpenWeatherMap недоступен или в прогнозе нет нужной даты.</exception>
+    /// <exception cref="WeatherServiceException">WeatherAPI.com недоступен или в прогнозе нет нужной даты.</exception>
     Task<CityForecast> GetForecastAsync(double latitude, double longitude, DateOnly localDate, CancellationToken cancellationToken);
 
     /// <summary>Возвращает прогноз на завтра (дата определяется в часовом поясе города).</summary>
-    /// <exception cref="WeatherServiceException">OpenWeatherMap недоступен или в прогнозе нет нужной даты.</exception>
+    /// <exception cref="WeatherServiceException">WeatherAPI.com недоступен или в прогнозе нет нужной даты.</exception>
     Task<CityForecast> GetTomorrowForecastAsync(double latitude, double longitude, CancellationToken cancellationToken);
 }
 
-/// <summary>Ошибка при обращении к OpenWeatherMap.</summary>
+/// <summary>Ошибка при обращении к WeatherAPI.com.</summary>
 public sealed class WeatherServiceException : Exception
 {
     public WeatherServiceException(string message, Exception? innerException = null)
@@ -30,11 +30,17 @@ public sealed class WeatherServiceException : Exception
     }
 }
 
-/// <summary>Реализация <see cref="IWeatherService"/> поверх HTTP API OpenWeatherMap.</summary>
+/// <summary>Реализация <see cref="IWeatherService"/> поверх HTTP API WeatherAPI.com.</summary>
 public sealed class WeatherService : IWeatherService
 {
-    private const string GeocodingUrl = "https://api.openweathermap.org/geo/1.0/direct";
-    private const string ForecastUrl = "https://api.openweathermap.org/data/2.5/forecast";
+    private const string SearchUrl = "https://api.weatherapi.com/v1/search.json";
+    private const string ForecastUrl = "https://api.weatherapi.com/v1/forecast.json";
+
+    /// <summary>
+    /// Сколько суток запрашивать. «Завтра» попадает в первые дни даже на границе суток, а на бесплатном
+    /// тарифе WeatherAPI.com прогноз доступен максимум на 3 дня.
+    /// </summary>
+    private const int ForecastDays = 3;
 
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
 
@@ -58,27 +64,28 @@ public sealed class WeatherService : IWeatherService
     /// <inheritdoc />
     public async Task<GeoCity?> FindCityAsync(string query, CancellationToken cancellationToken)
     {
-        var (cityPart, fullQuery) = NormalizeQuery(query);
-        if (fullQuery.Length == 0)
+        var cityPart = NormalizeQuery(query);
+        if (cityPart.Length == 0)
         {
             return null;
         }
 
+        // Поиск WeatherAPI.com принимает только название города: «Москва, RU» он не разберёт.
         var url = string.Create(
             CultureInfo.InvariantCulture,
-            $"{GeocodingUrl}?q={Uri.EscapeDataString(fullQuery)}&limit=5&appid={Uri.EscapeDataString(_apiKey)}");
+            $"{SearchUrl}?key={Uri.EscapeDataString(_apiKey)}&q={Uri.EscapeDataString(cityPart)}");
 
-        var locations = await GetJsonAsync<List<GeoLocationDto>>(url, cancellationToken).ConfigureAwait(false) ?? [];
+        var locations = await GetJsonAsync<List<LocationSearchDto>>(url, cancellationToken).ConfigureAwait(false) ?? [];
         if (locations.Count == 0)
         {
             return null;
         }
 
-        // Предпочитаем точное совпадение названия (в том числе в русской локализации).
+        // Предпочитаем точное совпадение названия, иначе берём первый результат сервиса.
         var exact = locations.FirstOrDefault(location => IsExactMatch(location, cityPart));
         var best = exact ?? locations[0];
 
-        return new GeoCity(best.Name, best.Country, best.State, best.Latitude, best.Longitude);
+        return new GeoCity(best.Name, best.Country, best.Region, best.Latitude, best.Longitude);
     }
 
     /// <inheritdoc />
@@ -88,10 +95,8 @@ public sealed class WeatherService : IWeatherService
         DateOnly localDate,
         CancellationToken cancellationToken)
     {
-        var response = await FetchForecastAsync(latitude, longitude, cancellationToken).ConfigureAwait(false);
-        var timeZoneOffsetSeconds = GetTimeZoneOffsetSeconds(response);
-
-        return BuildCityForecast(response, latitude, longitude, timeZoneOffsetSeconds, localDate);
+        var response = await RequestForecastAsync(latitude, longitude, cancellationToken).ConfigureAwait(false);
+        return BuildCityForecast(response, latitude, longitude, localDate);
     }
 
     /// <inheritdoc />
@@ -100,79 +105,80 @@ public sealed class WeatherService : IWeatherService
         double longitude,
         CancellationToken cancellationToken)
     {
-        var response = await FetchForecastAsync(latitude, longitude, cancellationToken).ConfigureAwait(false);
-        var timeZoneOffsetSeconds = GetTimeZoneOffsetSeconds(response);
-        var tomorrow = GetLocalDate(offsetDays: 1, timeZoneOffsetSeconds);
-
-        return BuildCityForecast(response, latitude, longitude, timeZoneOffsetSeconds, tomorrow);
+        var response = await RequestForecastAsync(latitude, longitude, cancellationToken).ConfigureAwait(false);
+        return BuildCityForecast(response, latitude, longitude, GetTargetDate(response));
     }
 
-    private async Task<ForecastResponseDto> FetchForecastAsync(
+    /// <summary>
+    /// Завтрашняя дата в часовом поясе города. Берётся из поля <c>location.localtime</c>; если сервис его
+    /// не прислал, дата считается по времени UTC и смещению часового пояса.
+    /// </summary>
+    private DateOnly GetTargetDate(ForecastResponseDto response)
+    {
+        if (ForecastBuilder.GetLocalToday(response) is { } today)
+        {
+            return today.AddDays(1);
+        }
+
+        var utcNow = _timeProvider.GetUtcNow().UtcDateTime;
+        var offset = ForecastBuilder.ResolveTimeZoneOffsetSeconds(
+            response,
+            DateOnly.FromDateTime(utcNow),
+            _defaultTimeZoneOffsetSeconds);
+
+        return DateOnly.FromDateTime(utcNow.AddSeconds(offset)).AddDays(1);
+    }
+
+    /// <summary>Запрашивает прогноз на 3 дня: этого всегда достаточно, чтобы получить «завтра».</summary>
+    private async Task<ForecastResponseDto> RequestForecastAsync(
         double latitude,
         double longitude,
         CancellationToken cancellationToken)
     {
         var url = string.Create(
             CultureInfo.InvariantCulture,
-            $"{ForecastUrl}?lat={latitude}&lon={longitude}&units=metric&lang=ru&appid={Uri.EscapeDataString(_apiKey)}");
+            $"{ForecastUrl}?key={Uri.EscapeDataString(_apiKey)}" +
+            $"&q={latitude:0.####},{longitude:0.####}&days={ForecastDays}&lang=ru&aqi=no&alerts=no");
 
-        var response = await GetJsonAsync<ForecastResponseDto>(url, cancellationToken).ConfigureAwait(false);
-        if (response is null || response.List.Count == 0)
-        {
-            throw new WeatherServiceException("OpenWeatherMap вернул пустой прогноз. Попробуйте позже.");
-        }
-
-        return response;
+        return await GetJsonAsync<ForecastResponseDto>(url, cancellationToken).ConfigureAwait(false)
+            ?? throw new WeatherServiceException("WeatherAPI.com вернул пустой прогноз.");
     }
 
-    private DateOnly GetLocalDate(int offsetDays, int timeZoneOffsetSeconds) =>
-        DateOnly.FromDateTime(
-            _timeProvider.GetUtcNow()
-                .ToOffset(TimeSpan.FromSeconds(timeZoneOffsetSeconds))
-                .DateTime)
-        .AddDays(offsetDays);
-
-    private int GetTimeZoneOffsetSeconds(ForecastResponseDto response) =>
-        response.City?.TimeZoneOffsetSeconds ?? _defaultTimeZoneOffsetSeconds;
-
-    private static CityForecast BuildCityForecast(
+    private CityForecast BuildCityForecast(
         ForecastResponseDto response,
         double latitude,
         double longitude,
-        int timeZoneOffsetSeconds,
         DateOnly localDate)
     {
-        var forecast = ForecastBuilder.BuildForDate(response, localDate)
+        var offset = ForecastBuilder.ResolveTimeZoneOffsetSeconds(
+            response,
+            localDate,
+            _defaultTimeZoneOffsetSeconds);
+
+        var forecast = ForecastBuilder.BuildForDate(response, localDate, offset)
             ?? throw new WeatherServiceException(
-                $"В прогнозе OpenWeatherMap нет данных на {localDate:dd.MM.yyyy}. Попробуйте позже.");
+                $"В прогнозе WeatherAPI.com нет данных на {localDate:dd.MM.yyyy}. Попробуйте позже.");
 
         return new CityForecast(
-            City: string.IsNullOrWhiteSpace(response.City?.Name) ? "Ваш город" : response.City!.Name,
-            CountryCode: response.City?.Country,
-            Latitude: response.City?.Coord?.Latitude ?? latitude,
-            Longitude: response.City?.Coord?.Longitude ?? longitude,
-            TimeZoneOffsetSeconds: timeZoneOffsetSeconds,
+            City: string.IsNullOrWhiteSpace(response.Location?.Name) ? "Ваш город" : response.Location!.Name,
+            CountryCode: response.Location?.Country,
+            Latitude: latitude,
+            Longitude: longitude,
+            TimeZoneOffsetSeconds: offset,
             Forecast: forecast);
     }
 
-    private static (string CityPart, string FullQuery) NormalizeQuery(string query)
+    /// <summary>Убирает уточнение страны: «Москва, RU» → «Москва» (поиск сервиса страну не принимает).</summary>
+    private static string NormalizeQuery(string query)
     {
-        var cleaned = (query ?? string.Empty).Replace(",", ", ", StringComparison.Ordinal).Trim();
-        while (cleaned.Contains("  ", StringComparison.Ordinal))
-        {
-            cleaned = cleaned.Replace("  ", " ", StringComparison.Ordinal);
-        }
-
+        var cleaned = (query ?? string.Empty).Trim();
         var separator = cleaned.IndexOf(',', StringComparison.Ordinal);
-        var cityPart = separator >= 0 ? cleaned[..separator].Trim() : cleaned;
 
-        return (cityPart, cleaned);
+        return (separator >= 0 ? cleaned[..separator] : cleaned).Trim();
     }
 
-    private static bool IsExactMatch(GeoLocationDto location, string cityPart) =>
-        string.Equals(location.Name, cityPart, StringComparison.OrdinalIgnoreCase) ||
-        (location.LocalNames is not null &&
-         location.LocalNames.Values.Any(name => string.Equals(name, cityPart, StringComparison.OrdinalIgnoreCase)));
+    private static bool IsExactMatch(LocationSearchDto location, string cityPart) =>
+        string.Equals(location.Name, cityPart, StringComparison.OrdinalIgnoreCase);
 
     private async Task<T?> GetJsonAsync<T>(string url, CancellationToken cancellationToken)
     {
@@ -190,7 +196,7 @@ public sealed class WeatherService : IWeatherService
         }
         catch (JsonException exception)
         {
-            throw new WeatherServiceException("Не удалось разобрать ответ OpenWeatherMap.", exception);
+            throw new WeatherServiceException("Не удалось разобрать ответ WeatherAPI.com.", exception);
         }
     }
 
@@ -200,11 +206,14 @@ public sealed class WeatherService : IWeatherService
 
         return statusCode switch
         {
-            HttpStatusCode.Unauthorized => "OpenWeatherMap отклонил API-ключ. " +
-                "Проверьте секрет OPENWEATHER_API_KEY (новый ключ активируется в течение пары часов)." + details,
-            HttpStatusCode.NotFound => "OpenWeatherMap не нашёл город по указанному названию." + details,
-            HttpStatusCode.TooManyRequests => "Исчерпан лимит запросов к OpenWeatherMap. Попробуйте позже." + details,
-            _ => $"OpenWeatherMap вернул ошибку {(int)statusCode} ({statusCode})." + details,
+            HttpStatusCode.Unauthorized => "WeatherAPI.com отклонил API-ключ. " +
+                "Проверьте секрет WEATHERAPI_API_KEY." + details,
+            HttpStatusCode.Forbidden => "WeatherAPI.com отклонил запрос: ключ заблокирован или у тарифа " +
+                "закончился лимит запросов." + details,
+            HttpStatusCode.BadRequest => "WeatherAPI.com не принял запрос: проверьте название города." + details,
+            HttpStatusCode.NotFound => "WeatherAPI.com не нашёл город по указанному названию." + details,
+            HttpStatusCode.TooManyRequests => "Исчерпан лимит запросов к WeatherAPI.com. Попробуйте позже." + details,
+            _ => $"WeatherAPI.com вернул ошибку {(int)statusCode} ({statusCode})." + details,
         };
     }
 }

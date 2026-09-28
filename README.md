@@ -12,10 +12,11 @@
 | Возможность | Детали |
 | --- | --- |
 | Доступ по паролю | Первое сообщение — пароль (`BOT_PASSWORD`). До авторизации любые команды заменяются просьбой прислать пароль |
-| Выбор города | Название города обычным сообщением или командой `/city Москва`. Поддерживаются уточнения: `Париж, FR` |
+| Выбор города | Название города обычным сообщением или командой `/city Москва`. Уточнение после запятой не мешает (`Париж, FR`) — в поиск уходит только название города |
 | Прогноз на завтра | Минимум/максимум, «ощущается как», характер погоды, вероятность и объём осадков, влажность, ветер и порывы |
+| Погода по часам | Строка на каждый час завтрашнего дня: температура, «ощущается как», явление, ветер, вероятность и объём осадков |
 | Ежедневная рассылка | Раз в сутки в 18:00 по времени города. Повторно прогноз на ту же дату не отправляется |
-| Часовые пояса | Смещение берётся из ответа OpenWeatherMap для города; пока город не выбран — `BOT_TIMEZONE_OFFSET_HOURS` (по умолчанию +3) |
+| Часовые пояса | Смещение берётся из пояса `tz_id` в ответе WeatherAPI.com; пока город не выбран — `BOT_TIMEZONE_OFFSET_HOURS` (по умолчанию +3) |
 | Только личные чаты | Сообщения из групп и каналов игнорируются, чтобы бот не мешал в общих чатах |
 | Режимы отладки | `--dry-run` (печать вместо отправки), `--force-send` (слать немедленно), `--print-forecast "Москва"` (посмотреть прогноз из консоли) |
 | Локальные секреты | Токен, ключ и пароль можно не экспортировать вручную: `secrets.json`, `secret.json`, `.env` или `dotnet user-secrets` |
@@ -45,14 +46,20 @@ GitHub Actions (cron: каждые 5 минут)
         ├── dotnet run --project src/WeatherBot
         │       ├── Telegram getUpdates       # новые сообщения → MessageProcessor (авторизация, города, команды)
         │       ├── DailySchedule.IsDue(...)  # кому уже пора получить прогноз
-        │       ├── WeatherService            # geocoding + 5-day / 3-hour forecast → WeatherFormatter
+        │       ├── WeatherService            # search.json + forecast.json (3 дня по часам) → WeatherFormatter
         │       └── TelegramNotifier          # отправка сообщения (HTML)
         └── git commit state.json             # состояние возвращается в репозиторий
 ```
 
-Прогноз на завтра собирается из 3-часовых точек OpenWeatherMap, попадающих в завтрашний день **города**
-(дата считается по смещению из ответа API), и агрегируется в один день: минимум/максимум температуры,
-максимальная вероятность осадков, сумма осадков, средняя влажность, максимальный ветер.
+Прогноз на завтра собирается из ответа WeatherAPI.com: нужный день берётся из `forecast.forecastday`
+(дата считается в часовом поясе **города** по полю `location.localtime`), а сводка складывается из блока
+`day` и массива `hour` — минимум и максимум температуры, «ощущается как», вероятность и сумма осадков,
+средняя влажность, максимальный ветер и порывы. Каждая часовая запись попадает в сообщение отдельной
+строкой блока «По часам».
+
+Города ищет `search.json` WeatherAPI.com: уточнение страны после запятой не используется, а название сервис
+отдаёт так, как знает его сам (обычно латиницей). Если русское название не нашлось, пришлите латинское —
+например `Moscow`; в сообщениях останется то имя города, которое вы ввели.
 
 ## Структура проекта
 
@@ -66,23 +73,23 @@ src/WeatherBot/
 ├── Models/
 │   ├── BotState.cs                  # состояние: служебные поля + список пользователей
 │   ├── BotUser.cs                   # пользователь: доступ, город, координаты, пояс, подписка
-│   ├── WeatherModels.cs             # GeoCity, DailyForecast, CityForecast
+│   ├── WeatherModels.cs             # GeoCity, DailyForecast, HourlyForecast, CityForecast
 │   ├── CityForecastExtensions.cs    # подстановка названия города из настроек пользователя
-│   └── OpenWeather/OpenWeatherModels.cs  # DTO ответов geocoding и forecast
+│   └── WeatherApi/WeatherApiModels.cs   # DTO ответов search.json и forecast.json
 ├── Security/PasswordChecker.cs      # сравнение пароля, устойчивое к таймингам
 └── Services/
     ├── BotRunner.cs                 # один полный цикл работы бота
     ├── MessageProcessor.cs          # маршрутизация сообщений и команд
-    ├── WeatherService.cs            # IWeatherService: HTTP-запросы к OpenWeatherMap
-    ├── ForecastBuilder.cs           # агрегация 3-часовых точек в прогноз на день
+    ├── WeatherService.cs            # IWeatherService: HTTP-запросы к WeatherAPI.com
+    ├── ForecastBuilder.cs           # сводка дня и часовой прогноз из ответа forecast.json
     ├── WeatherFormatter.cs          # текст сообщения (HTML и plain text)
     ├── BotMessages.cs               # тексты сообщений бота
     ├── DailySchedule.cs             # когда и кому отправлять прогноз
     ├── TelegramNotifier.cs          # IMessageSender: отправка через Telegram.Bot (+ dry-run)
     ├── JsonStateStore.cs            # IStateStore: чтение/запись state.json
     └── ConsoleLog.cs                # логи с отметкой времени
-tests/WeatherBot.Tests/              # xUnit: 187 тестов; сеть, время и Telegram подменяются
-.github/workflows/weather-bot.yml    # hourly cron, тесты, запуск бота, коммит state.json
+tests/WeatherBot.Tests/              # xUnit: 211 тестов; сеть, время и Telegram подменяются
+.github/workflows/weather-bot.yml    # cron каждые 5 минут, тесты, запуск бота, коммит state.json
 secrets.example.json                 # шаблон локальных секретов (сам secrets.json — в .gitignore)
 ```
 
@@ -97,9 +104,10 @@ secrets.example.json                 # шаблон локальных секр�
    dotnet test WeatherBot.sln
    ```
 
-2. Получите ключ OpenWeatherMap на [openweathermap.org/api](https://openweathermap.org/api) —
-   раздел *My API keys*. Новый ключ активируется в течение пары часов: до этого API отвечает
-   `401 Unauthorized`, а бот пишет «OpenWeatherMap отклонил API-ключ».
+2. Получите ключ WeatherAPI.com на [weatherapi.com](https://www.weatherapi.com/) — он показан
+   в разделе *My Account → API key* и работает сразу. Ключ кладётся в секрет `WEATHERAPI_API_KEY`;
+   если он неверный, бот отвечает «WeatherAPI.com отклонил API-ключ». Бесплатного тарифа достаточно:
+   бот делает не больше двух запросов на пользователя за запуск.
 3. Создайте бота у [@BotFather](https://t.me/BotFather) и сохраните токен.
 4. Придумайте пароль, который бот будет спрашивать у пользователей.
 5. Добавьте секреты и переменные репозитория: `Settings → Secrets and variables → Actions`.
@@ -110,7 +118,7 @@ secrets.example.json                 # шаблон локальных секр�
 | Имя | Где задавать | Обязательно | По умолчанию | Назначение |
 | --- | --- | --- | --- | --- |
 | `TELEGRAM_BOT_TOKEN` | secret | да | — | Токен бота от @BotFather |
-| `OPENWEATHER_API_KEY` | secret | да | — | Ключ OpenWeatherMap |
+| `WEATHERAPI_API_KEY` | secret | да | — | API-ключ WeatherAPI.com |
 | `BOT_PASSWORD` | secret | да | — | Пароль, который бот спрашивает у пользователей |
 | `BOT_DAILY_SEND_HOUR` | variable | нет | `18` | Час рассылки (0–23) по местному времени города |
 | `BOT_TIMEZONE_OFFSET_HOURS` | variable | нет | `3` | Смещение для городов без данных о поясе: от `-12` до `14`, допустимы дробные (`5.5`) |
@@ -141,7 +149,7 @@ secrets.example.json                 # шаблон локальных секр�
 | Аргумент | Переменная окружения | По умолчанию | Назначение |
 | --- | --- | --- | --- |
 | `--telegram-token` | `TELEGRAM_BOT_TOKEN` | — | Токен бота. Обязателен, кроме режима `--print-forecast` |
-| `--openweather-key` | `OPENWEATHER_API_KEY` | — | Ключ OpenWeatherMap. Обязателен всегда |
+| `--weatherapi-key` | `WEATHERAPI_API_KEY` | — | API-ключ WeatherAPI.com. Обязателен всегда |
 | `--password` | `BOT_PASSWORD` | — | Пароль доступа. Обязателен, кроме режима `--print-forecast` |
 | `--print-forecast "<город>"` | — | — | Напечатать прогноз на завтра в консоль и выйти, ничего не отправляя |
 | `--state` | `BOT_STATE_FILE` | `state.json` | Путь к файлу состояния |
@@ -162,14 +170,14 @@ secrets.example.json                 # шаблон локальных секр�
 ```bash
 # bash / Linux / macOS
 export TELEGRAM_BOT_TOKEN="123456789:AA..."
-export OPENWEATHER_API_KEY="ваш-ключ"
+export WEATHERAPI_API_KEY="ваш-ключ"
 export BOT_PASSWORD="секретный-пароль"
 ```
 
 ```powershell
 # PowerShell (Windows)
 $env:TELEGRAM_BOT_TOKEN = "123456789:AA..."
-$env:OPENWEATHER_API_KEY = "ваш-ключ"
+$env:WEATHERAPI_API_KEY = "ваш-ключ"
 $env:BOT_PASSWORD = "секретный-пароль"
 ```
 
@@ -183,7 +191,7 @@ dotnet run --project src/WeatherBot -- --dry-run
 # разослать прогноз прямо сейчас, не дожидаясь часа рассылки
 dotnet run --project src/WeatherBot -- --force-send
 
-# проверить ключ OpenWeatherMap и текст сообщения (Telegram не нужен)
+# проверить ключ WeatherAPI.com и текст сообщения (Telegram не нужен)
 dotnet run --project src/WeatherBot -- --print-forecast "Москва"
 ```
 
@@ -211,7 +219,7 @@ dotnet run --project src/WeatherBot -- --print-forecast "Москва"
 {
   "MySecretSettings": {
     "TELEGRAM_BOT_TOKEN": "123456789:AA...",
-    "OPENWEATHER_API_KEY": "ваш-ключ",
+    "WEATHERAPI_API_KEY": "ваш-ключ-с-weatherapi.com",
     "BOT_PASSWORD": "секретный-пароль",
     "BOT_DAILY_SEND_HOUR": 20
   }
@@ -229,7 +237,7 @@ dotnet run --project src/WeatherBot -- --print-forecast "Москва"
 
 ```bash
 TELEGRAM_BOT_TOKEN=123456789:AA...
-OPENWEATHER_API_KEY=ваш-ключ
+WEATHERAPI_API_KEY=ваш-ключ-с-weatherapi.com
 BOT_PASSWORD="секретный-пароль"
 ```
 
@@ -238,7 +246,7 @@ BOT_PASSWORD="секретный-пароль"
 ```bash
 dotnet user-secrets --project src/WeatherBot init     # уже сделано: UserSecretsId есть в csproj
 dotnet user-secrets --project src/WeatherBot set "MySecretSettings:TELEGRAM_BOT_TOKEN" "123456789:AA..."
-dotnet user-secrets --project src/WeatherBot set "MySecretSettings:OPENWEATHER_API_KEY" "ваш-ключ"
+dotnet user-secrets --project src/WeatherBot set "MySecretSettings:WEATHERAPI_API_KEY" "ваш-ключ"
 dotnet user-secrets --project src/WeatherBot set "MySecretSettings:BOT_PASSWORD" "секретный-пароль"
 dotnet user-secrets --project src/WeatherBot list     # проверить, что всё записалось
 ```
@@ -277,14 +285,14 @@ dotnet test WeatherBot.sln --filter WeatherServiceTests    # только оди
 | `BotStateTests.cs` | Получение и создание пользователя, обновление профиля, выборка подписчиков |
 | `MessageProcessorTests.cs` | Авторизация по паролю, все команды (`/start`, `/help`, `/login`, `/city`, `/tomorrow`, `/status`, `/stop`, `/subscribe`, `/logout`, `/chatid`), поведение до входа, игнорирование общих чатов, ошибки поиска города и прогноза |
 | `DailyScheduleTests.cs` | Местное время пользователя, дата «завтра», формат даты, условия отправки (час рассылки, повторная отправка в тот же день, `--force-send`) |
-| `ForecastBuilderTests.cs` | Дата точки по смещению пояса, агрегация дня, выбор преобладающего состояния, иконки дня и ночи, порог осадков |
-| `WeatherFormatterTests.cs` | Текст сообщения в HTML и plain text: экранирование, эмодзи, отсутствие данных о порывах и осадках |
-| `WeatherServiceTests.cs` | HTTP-слой: параметры запросов geocoding и forecast, разбор ответов, тексты ошибок (`401`, `404`, `429`, `5xx`, битый JSON, пустой прогноз) на подменённом `HttpMessageHandler` |
+| `ForecastBuilderTests.cs` | Разбор даты и местного времени города, поиск часового пояса (`tz_id`, часовые метки, значение по умолчанию), сводка дня с почасовкой, порядок часов, конвертация км/ч в м/с, порог осадков |
+| `WeatherFormatterTests.cs` | Текст сообщения в HTML и plain text: экранирование, эмодзи по кодам WeatherAPI.com, блок «По часам», отсутствие данных о порывах и осадках |
+| `WeatherServiceTests.cs` | HTTP-слой: параметры запросов `search.json` и `forecast.json` (`q`, `days`, `lang`), выбор города и даты «завтра», разбор ответов, тексты ошибок (`400`, `401`, `403`, `404`, `429`, `5xx`, битый JSON, пустой прогноз) на подменённом `HttpMessageHandler` |
 | `JsonStateStoreTests.cs` | Чтение и запись `state.json`: camelCase-имена полей, отсутствие временного файла, создание каталогов, битый JSON, неизвестные поля |
 | `TestData.cs`, `TestDoubles.cs` | Общие примеры данных и подмены: `FakeWeatherService`, `RecordingSender`, `StubHttpMessageHandler`, `FixedTimeProvider`, временный каталог и область переменных окружения (`EnvironmentScope`, `EnvironmentVariablesCollection`) |
 
 ## Лицензия
 
 Проект распространяется «как есть» — используйте и меняйте свободно. Данные о погоде предоставляет
-[OpenWeatherMap](https://openweathermap.org/), доставка сообщений — [Telegram Bot API](https://core.telegram.org/bots/api).
+[WeatherAPI.com](https://www.weatherapi.com/), доставка сообщений — [Telegram Bot API](https://core.telegram.org/bots/api).
 

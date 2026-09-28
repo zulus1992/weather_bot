@@ -16,7 +16,7 @@ public sealed class SecretsLoaderTests
 {
     private static EnvironmentScope CleanEnvironment() => new(
         SecretsLoader.TelegramBotTokenVariable,
-        SecretsLoader.OpenWeatherApiKeyVariable,
+        SecretsLoader.WeatherApiKeyVariable,
         SecretsLoader.PasswordVariable,
         SecretsLoader.SecretsFileVariable,
         SecretsLoader.StateFileVariable,
@@ -37,7 +37,7 @@ public sealed class SecretsLoaderTests
         {
           "MySecretSettings": {
             "TELEGRAM_BOT_TOKEN": "token",
-            "OPENWEATHER_API_KEY": "key",
+            "WEATHERAPI_API_KEY": "key",
             "BOT_PASSWORD": "secret"
           }
         }
@@ -60,7 +60,7 @@ public sealed class SecretsLoaderTests
         var path = WriteFile(directory, "secrets.json", """
             {
               "TELEGRAM_BOT_TOKEN": "token",
-              "OPENWEATHER_API_KEY": "key",
+              "WEATHERAPI_API_KEY": "key",
               "BOT_PASSWORD": "secret"
             }
             """);
@@ -72,14 +72,14 @@ public sealed class SecretsLoaderTests
             new[]
             {
                 SecretsLoader.TelegramBotTokenVariable,
-                SecretsLoader.OpenWeatherApiKeyVariable,
+                SecretsLoader.WeatherApiKeyVariable,
                 SecretsLoader.PasswordVariable,
             },
             result.Applied);
         Assert.Empty(result.Skipped);
         Assert.False(result.NothingMatched);
         Assert.Equal("token", Variable(SecretsLoader.TelegramBotTokenVariable));
-        Assert.Equal("key", Variable(SecretsLoader.OpenWeatherApiKeyVariable));
+        Assert.Equal("key", Variable(SecretsLoader.WeatherApiKeyVariable));
         Assert.Equal("secret", Variable(SecretsLoader.PasswordVariable));
     }
 
@@ -94,7 +94,7 @@ public sealed class SecretsLoaderTests
 
         Assert.Equal(3, result.Applied.Count);
         Assert.Equal("token", Variable(SecretsLoader.TelegramBotTokenVariable));
-        Assert.Equal("key", Variable(SecretsLoader.OpenWeatherApiKeyVariable));
+        Assert.Equal("key", Variable(SecretsLoader.WeatherApiKeyVariable));
         Assert.Equal("secret", Variable(SecretsLoader.PasswordVariable));
     }
 
@@ -106,7 +106,7 @@ public sealed class SecretsLoaderTests
         WriteFile(directory, "secret.json", """
             {
               "TelegramBotToken": "token",
-              "OpenWeatherApiKey": "key",
+              "WeatherApiKey": "key",
               "Password": "secret",
               "DailySendHour": 21,
               "DryRun": true
@@ -131,7 +131,7 @@ public sealed class SecretsLoaderTests
             # комментарий
             export TELEGRAM_BOT_TOKEN="token"
 
-            OPENWEATHER_API_KEY='key'
+            WEATHERAPI_API_KEY='key'
             BOT_PASSWORD=secret с пробелом
             """);
 
@@ -139,7 +139,7 @@ public sealed class SecretsLoaderTests
 
         Assert.Equal(SecretsLoader.TelegramBotTokenVariable, result.Applied[0]);
         Assert.Equal("token", Variable(SecretsLoader.TelegramBotTokenVariable));
-        Assert.Equal("key", Variable(SecretsLoader.OpenWeatherApiKeyVariable));
+        Assert.Equal("key", Variable(SecretsLoader.WeatherApiKeyVariable));
         Assert.Equal("secret с пробелом", Variable(SecretsLoader.PasswordVariable));
     }
 
@@ -202,7 +202,7 @@ public sealed class SecretsLoaderTests
             {
               "MySecretSettings": {
                 "TELEGRAM_BOT_TOKEN": "из-файла",
-                "OPENWEATHER_API_KEY": "key"
+                "WEATHERAPI_API_KEY": "key"
               }
             }
             """);
@@ -212,7 +212,7 @@ public sealed class SecretsLoaderTests
         var result = Load(directory);
 
         Assert.Equal("из-окружения", Variable(SecretsLoader.TelegramBotTokenVariable));
-        Assert.Equal(new[] { SecretsLoader.OpenWeatherApiKeyVariable }, result.Applied);
+        Assert.Equal(new[] { SecretsLoader.WeatherApiKeyVariable }, result.Applied);
         Assert.Equal(new[] { SecretsLoader.TelegramBotTokenVariable }, result.Skipped);
         Assert.False(result.NothingMatched);
     }

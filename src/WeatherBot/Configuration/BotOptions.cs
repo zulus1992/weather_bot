@@ -11,8 +11,8 @@ public sealed class BotOptions
     /// <summary>Токен бота, полученный у @BotFather (переменная окружения TELEGRAM_BOT_TOKEN).</summary>
     public required string TelegramBotToken { get; init; }
 
-    /// <summary>API-ключ OpenWeatherMap (переменная окружения OPENWEATHER_API_KEY).</summary>
-    public required string OpenWeatherApiKey { get; init; }
+    /// <summary>API-ключ WeatherAPI.com (переменная окружения WEATHERAPI_API_KEY).</summary>
+    public required string WeatherApiKey { get; init; }
 
     /// <summary>Пароль для авторизации пользователей (переменная окружения BOT_PASSWORD).</summary>
     public required string Password { get; init; }
@@ -66,13 +66,13 @@ public sealed class BotOptions
 
         var printCity = Get("print-forecast", null);
         var token = Get("telegram-token", "TELEGRAM_BOT_TOKEN");
-        var apiKey = Get("openweather-key", "OPENWEATHER_API_KEY");
+        var apiKey = Get("weatherapi-key", "WEATHERAPI_API_KEY");
         var password = Get("password", "BOT_PASSWORD");
 
         var missing = new List<string>();
         if (string.IsNullOrEmpty(apiKey))
         {
-            missing.Add("OPENWEATHER_API_KEY");
+            missing.Add("WEATHERAPI_API_KEY");
         }
 
         // В режиме печати прогноза Telegram не нужен.
@@ -94,13 +94,13 @@ public sealed class BotOptions
             throw new InvalidOperationException(
                 $"Не заданы обязательные параметры: {string.Join(", ", missing)}. " +
                 "Передайте их через переменные окружения (в GitHub Actions — через секреты репозитория) " +
-                "или через аргументы командной строки, например: --openweather-key XXX --password secret.");
+                "или через аргументы командной строки, например: --weatherapi-key XXX --password secret.");
         }
 
         return new BotOptions
         {
             TelegramBotToken = token ?? string.Empty,
-            OpenWeatherApiKey = apiKey!,
+            WeatherApiKey = apiKey!,
             Password = password ?? string.Empty,
             StateFilePath = Get("state", "BOT_STATE_FILE") ?? "state.json",
             DefaultTimeZoneOffsetHours = ParseDouble(

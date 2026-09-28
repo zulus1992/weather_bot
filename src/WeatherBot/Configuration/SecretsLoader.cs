@@ -33,8 +33,8 @@ public static class SecretsLoader
     /// <summary>Токен бота от @BotFather.</summary>
     public const string TelegramBotTokenVariable = "TELEGRAM_BOT_TOKEN";
 
-    /// <summary>Ключ OpenWeatherMap.</summary>
-    public const string OpenWeatherApiKeyVariable = "OPENWEATHER_API_KEY";
+    /// <summary>API-ключ WeatherAPI.com.</summary>
+    public const string WeatherApiKeyVariable = "WEATHERAPI_API_KEY";
 
     /// <summary>Пароль доступа к боту.</summary>
     public const string PasswordVariable = "BOT_PASSWORD";
@@ -327,7 +327,7 @@ public static class SecretsLoader
         }
 
         Add(TelegramBotTokenVariable, TelegramBotTokenVariable, "TelegramBotToken", "TelegramToken", "BotToken");
-        Add(OpenWeatherApiKeyVariable, OpenWeatherApiKeyVariable, "OpenWeatherApiKey", "OpenWeatherKey", "WeatherApiKey");
+        Add(WeatherApiKeyVariable, WeatherApiKeyVariable, "WeatherApiKey", "WeatherApiKeyToken");
         Add(PasswordVariable, PasswordVariable, "BotPassword", "Password");
         Add(StateFileVariable, StateFileVariable, "StateFilePath", "StateFile");
         Add(TimeZoneOffsetVariable, TimeZoneOffsetVariable, "DefaultTimeZoneOffsetHours", "TimeZoneOffsetHours");

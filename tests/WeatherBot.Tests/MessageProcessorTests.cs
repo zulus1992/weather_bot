@@ -17,7 +17,7 @@ public sealed class MessageProcessorTests
         new(
             weather,
             sender,
-            new BotOptions { TelegramBotToken = "token", OpenWeatherApiKey = "key", Password = password },
+            new BotOptions { TelegramBotToken = "token", WeatherApiKey = "key", Password = password },
             state);
 
     /// <summary>Готовый пользователь: авторизован, город Москва выбран.</summary>
@@ -269,7 +269,7 @@ public sealed class MessageProcessorTests
         var weather = new FakeWeatherService
         {
             City = Samples.Moscow(),
-            ForecastException = new WeatherServiceException("OpenWeatherMap отклонил запрос"),
+            ForecastException = new WeatherServiceException("WeatherAPI.com отклонил запрос"),
         };
         var sender = new RecordingSender();
         var state = new BotState();
@@ -280,7 +280,7 @@ public sealed class MessageProcessorTests
 
         Assert.Equal("Москва", user.City);
         Assert.Contains("Город сохранён", sender.Last, StringComparison.Ordinal);
-        Assert.Contains("OpenWeatherMap отклонил запрос", sender.Last, StringComparison.Ordinal);
+        Assert.Contains("WeatherAPI.com отклонил запрос", sender.Last, StringComparison.Ordinal);
         Assert.Null(user.TimeZoneOffsetSeconds);
     }
 
@@ -354,7 +354,7 @@ public sealed class MessageProcessorTests
     {
         var weather = new FakeWeatherService
         {
-            // OpenWeatherMap возвращает название на английском — должно остаться имя пользователя.
+            // WeatherAPI.com возвращает своё название города — должно остаться имя пользователя.
             ForecastFactory = () => Samples.TomorrowForecast() with { City = "Moscow" },
         };
         var sender = new RecordingSender();
@@ -375,7 +375,7 @@ public sealed class MessageProcessorTests
     {
         var weather = new FakeWeatherService
         {
-            ForecastException = new WeatherServiceException("Ответ OpenWeatherMap не распознан"),
+            ForecastException = new WeatherServiceException("Ответ WeatherAPI.com не распознан"),
         };
         var sender = new RecordingSender();
         var state = new BotState();
@@ -385,7 +385,7 @@ public sealed class MessageProcessorTests
         await processor.ProcessAsync(MessageFactory.Create(ChatId, "/tomorrow"), CancellationToken.None);
 
         Assert.Contains("Не удалось получить прогноз", sender.Last, StringComparison.Ordinal);
-        Assert.Contains("Ответ OpenWeatherMap не распознан", sender.Last, StringComparison.Ordinal);
+        Assert.Contains("Ответ WeatherAPI.com не распознан", sender.Last, StringComparison.Ordinal);
     }
 
     [Fact]

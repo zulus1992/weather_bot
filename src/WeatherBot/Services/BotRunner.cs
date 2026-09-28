@@ -242,7 +242,7 @@ public sealed class BotRunner
         }
         catch (WeatherServiceException exception)
         {
-            ConsoleLog.Error($"OpenWeatherMap не отдал прогноз для chatId={user.ChatId}", exception);
+            ConsoleLog.Error($"WeatherAPI.com не отдал прогноз для chatId={user.ChatId}", exception);
         }
         catch (Exception exception)
         {

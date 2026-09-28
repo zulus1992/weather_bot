@@ -6,7 +6,7 @@ namespace WeatherBot.Tests;
 public sealed class BotOptionsTests
 {
     private const string TokenVariable = "TELEGRAM_BOT_TOKEN";
-    private const string ApiKeyVariable = "OPENWEATHER_API_KEY";
+    private const string ApiKeyVariable = "WEATHERAPI_API_KEY";
     private const string PasswordVariable = "BOT_PASSWORD";
 
     /// <summary>Очищает все переменные окружения, которые читает <see cref="BotOptions"/>.</summary>
@@ -15,7 +15,7 @@ public sealed class BotOptionsTests
         "BOT_STATE_FILE", "BOT_TIMEZONE_OFFSET_HOURS", "BOT_DAILY_SEND_HOUR", "BOT_DRY_RUN", "BOT_FORCE_SEND");
 
     private static string[] MinimalArguments() =>
-        ["--telegram-token", "token", "--openweather-key", "key", "--password", "secret"];
+        ["--telegram-token", "token", "--weatherapi-key", "key", "--password", "secret"];
 
     [Fact]
     public void Parse_UsesDefaults()
@@ -25,7 +25,7 @@ public sealed class BotOptionsTests
         var options = BotOptions.Parse(MinimalArguments());
 
         Assert.Equal("token", options.TelegramBotToken);
-        Assert.Equal("key", options.OpenWeatherApiKey);
+        Assert.Equal("key", options.WeatherApiKey);
         Assert.Equal("secret", options.Password);
         Assert.Equal("state.json", options.StateFilePath);
         Assert.Equal(18, options.DailySendHour);
@@ -43,7 +43,7 @@ public sealed class BotOptionsTests
         var exception = Assert.Throws<InvalidOperationException>(() =>
             BotOptions.Parse(["--telegram-token", "token", "--password", "secret"]));
 
-        Assert.Contains("OPENWEATHER_API_KEY", exception.Message, StringComparison.Ordinal);
+        Assert.Contains("WEATHERAPI_API_KEY", exception.Message, StringComparison.Ordinal);
         Assert.DoesNotContain(TokenVariable, exception.Message, StringComparison.Ordinal);
     }
 
@@ -54,7 +54,7 @@ public sealed class BotOptionsTests
 
         var exception = Assert.Throws<InvalidOperationException>(() => BotOptions.Parse([]));
 
-        Assert.Contains("OPENWEATHER_API_KEY", exception.Message, StringComparison.Ordinal);
+        Assert.Contains("WEATHERAPI_API_KEY", exception.Message, StringComparison.Ordinal);
         Assert.Contains(TokenVariable, exception.Message, StringComparison.Ordinal);
         Assert.Contains(PasswordVariable, exception.Message, StringComparison.Ordinal);
     }
@@ -65,7 +65,7 @@ public sealed class BotOptionsTests
         using var environment = CleanEnvironment();
 
         var exception = Assert.Throws<InvalidOperationException>(() =>
-            BotOptions.Parse(["--telegram-token", "token", "--openweather-key", "key"]));
+            BotOptions.Parse(["--telegram-token", "token", "--weatherapi-key", "key"]));
 
         Assert.Contains(PasswordVariable, exception.Message, StringComparison.Ordinal);
     }
@@ -75,7 +75,7 @@ public sealed class BotOptionsTests
     {
         using var environment = CleanEnvironment();
 
-        var options = BotOptions.Parse(["--print-forecast", "Москва", "--openweather-key", "key"]);
+        var options = BotOptions.Parse(["--print-forecast", "Москва", "--weatherapi-key", "key"]);
 
         Assert.Equal("Москва", options.PrintForecastCity);
         Assert.Equal(string.Empty, options.TelegramBotToken);
@@ -98,7 +98,7 @@ public sealed class BotOptionsTests
         var options = BotOptions.Parse([]);
 
         Assert.Equal("env-token", options.TelegramBotToken);
-        Assert.Equal("env-key", options.OpenWeatherApiKey);
+        Assert.Equal("env-key", options.WeatherApiKey);
         Assert.Equal("env-secret", options.Password);
         Assert.Equal("data/state.json", options.StateFilePath);
         Assert.Equal(9, options.DailySendHour);
@@ -135,7 +135,7 @@ public sealed class BotOptionsTests
             ["--telegram-token", "cli-token", "--password", "cli-secret", "--send-hour", "21"]);
 
         Assert.Equal("cli-token", options.TelegramBotToken);
-        Assert.Equal("env-key", options.OpenWeatherApiKey);
+        Assert.Equal("env-key", options.WeatherApiKey);
         Assert.Equal("cli-secret", options.Password);
         Assert.Equal(21, options.DailySendHour);
     }
@@ -146,10 +146,10 @@ public sealed class BotOptionsTests
         using var environment = CleanEnvironment();
 
         var options = BotOptions.Parse(
-            ["--telegram-token=t", "--openweather-key=k", "--password=p", "--state=state.json"]);
+            ["--telegram-token=t", "--weatherapi-key=k", "--password=p", "--state=state.json"]);
 
         Assert.Equal("t", options.TelegramBotToken);
-        Assert.Equal("k", options.OpenWeatherApiKey);
+        Assert.Equal("k", options.WeatherApiKey);
         Assert.Equal("p", options.Password);
         Assert.Equal("state.json", options.StateFilePath);
     }
@@ -172,7 +172,7 @@ public sealed class BotOptionsTests
 
         var options = BotOptions.Parse([.. MinimalArguments(), "лишний", "--unknown", "значение"]);
 
-        Assert.Equal("key", options.OpenWeatherApiKey);
+        Assert.Equal("key", options.WeatherApiKey);
     }
 
     [Theory]
@@ -212,7 +212,7 @@ public sealed class BotOptionsTests
         var options = new BotOptions
         {
             TelegramBotToken = "t",
-            OpenWeatherApiKey = "k",
+            WeatherApiKey = "k",
             Password = "p",
             DefaultTimeZoneOffsetHours = hours,
         };

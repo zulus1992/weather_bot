@@ -239,7 +239,7 @@ public sealed class MessageProcessor
     private Task SendAsync(BotUser user, string html, CancellationToken cancellationToken) =>
         _notifier.SendHtmlAsync(user.ChatId, html, cancellationToken);
 
-    /// <summary>Ищет город у OpenWeatherMap и сохраняет его в настройках пользователя.</summary>
+    /// <summary>Ищет город у WeatherAPI.com и сохраняет его в настройках пользователя.</summary>
     private async Task ApplyCityAsync(BotUser user, string query, CancellationToken cancellationToken)
     {
         GeoCity? city;

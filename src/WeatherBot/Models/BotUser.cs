@@ -28,7 +28,7 @@ public sealed class BotUser
 
     public double? Longitude { get; set; }
 
-    /// <summary>Смещение часового пояса города в секундах (значение timezone из ответа OpenWeatherMap).</summary>
+    /// <summary>Смещение часового пояса города в секундах (пояс tz_id из ответа WeatherAPI.com).</summary>
     public int? TimeZoneOffsetSeconds { get; set; }
 
     /// <summary>Дата последнего отправленного прогноза в часовом поясе города, формат yyyy-MM-dd.</summary>

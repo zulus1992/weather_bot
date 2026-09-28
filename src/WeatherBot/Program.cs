@@ -45,7 +45,7 @@ internal static class Program
         using var httpClient = new HttpClient { Timeout = TimeSpan.FromSeconds(30) };
         var weather = new WeatherService(
             httpClient,
-            options.OpenWeatherApiKey,
+            options.WeatherApiKey,
             options.DefaultTimeZoneOffsetSeconds);
 
         using var cancellation = new CancellationTokenSource();
@@ -99,7 +99,7 @@ internal static class Program
         {
             ConsoleLog.Warning(
                 $"В файле секретов {secrets.Source} нет известных ключей. Ожидаются {SecretsLoader.TelegramBotTokenVariable}, " +
-                $"{SecretsLoader.OpenWeatherApiKeyVariable}, {SecretsLoader.PasswordVariable} — отдельно или внутри секции " +
+                $"{SecretsLoader.WeatherApiKeyVariable}, {SecretsLoader.PasswordVariable} — отдельно или внутри секции " +
                 "вида {\"MySecretSettings\": {\"TELEGRAM_BOT_TOKEN\": \"...\"}}.");
             return;
         }
@@ -120,7 +120,7 @@ internal static class Program
 
     /// <summary>
     /// Режим <c>--print-forecast "Москва"</c>: печатает прогноз в консоль и ничего не отправляет.
-    /// Удобно для проверки ключей OpenWeatherMap и текста сообщения.
+    /// Удобно для проверки ключей WeatherAPI.com и текста сообщения.
     /// </summary>
     private static async Task<int> PrintForecastAsync(
         IWeatherService weather,

@@ -15,6 +15,29 @@ public sealed class WeatherFormatterTests
             Forecast = daily ?? Samples.Daily(Date),
         };
 
+    /// <summary>Почасовой прогноз для проверки блока «По часам»: ночь, дождь днём, ясно вечером.</summary>
+    private static DailyForecast DailyWithHours() => Samples.Daily(
+        Date,
+        hours:
+        [
+            Samples.Hourly(0, temperature: 6, feelsLike: 4, windSpeed: 3),
+            Samples.Hourly(
+                13,
+                temperature: 15.4,
+                feelsLike: 14.2,
+                conditionCode: 1183,
+                description: "лёгкий дождь",
+                windSpeed: 4.2,
+                precipitationProbability: 60,
+                precipitationMm: 0.4),
+            Samples.Hourly(
+                22,
+                temperature: 8,
+                feelsLike: 6,
+                windSpeed: 2,
+                isDay: false),
+        ]);
+
     [Theory]
     [InlineData("2026-09-21", "21 сентября (понедельник)")]
     [InlineData("2026-09-26", "26 сентября (суббота)")]
@@ -34,28 +57,31 @@ public sealed class WeatherFormatterTests
         Assert.Equal(expected, WeatherFormatter.FormatTemperature(value));
 
     [Theory]
-    [InlineData("01d", "☀️")]
-    [InlineData("02d", "🌤️")]
-    [InlineData("03d", "⛅")]
-    [InlineData("04d", "☁️")]
-    [InlineData("09d", "🌧️")]
-    [InlineData("10d", "🌦️")]
-    [InlineData("10n", "🌧️")]
-    [InlineData("11d", "⛈️")]
-    [InlineData("13d", "❄️")]
-    [InlineData("50d", "🌫️")]
-    [InlineData("ab", "🌡")]
-    [InlineData("x", "🌡")]
-    [InlineData(null, "☀️")]
-    public void GetEmoji_MapsOpenWeatherIconCodes(string? icon, string expected) =>
-        Assert.Equal(expected, WeatherFormatter.GetEmoji(icon));
+    [InlineData(1000, true, "☀️")]
+    [InlineData(1000, false, "🌙")]
+    [InlineData(1003, true, "🌤️")]
+    [InlineData(1003, false, "☁️")]
+    [InlineData(1006, true, "⛅")]
+    [InlineData(1009, true, "☁️")]
+    [InlineData(1030, true, "🌫️")]
+    [InlineData(1063, true, "🌦️")]
+    [InlineData(1150, true, "🌦️")]
+    [InlineData(1183, true, "🌧️")]
+    [InlineData(1195, true, "🌧️")]
+    [InlineData(1204, true, "🌨️")]
+    [InlineData(1213, true, "❄️")]
+    [InlineData(1087, true, "⛈️")]
+    [InlineData(ForecastBuilder.UnknownConditionCode, true, "🌡")]
+    [InlineData(9999, true, "🌡")]
+    public void GetEmoji_MapsWeatherApiConditionCodes(int code, bool isDay, string expected) =>
+        Assert.Equal(expected, WeatherFormatter.GetEmoji(code, isDay));
 
     [Fact]
     public void ToHtml_FormatsFullForecast()
     {
         var html = WeatherFormatter.ToHtml(Forecast());
 
-        Assert.Contains("<b>Погода на завтра — 26 сентября (суббота)</b>", html, StringComparison.Ordinal);
+        Assert.Contains("🌤️ <b>Погода на завтра — 26 сентября (суббота)</b>", html, StringComparison.Ordinal);
         Assert.Contains("📍 Москва, RU", html, StringComparison.Ordinal);
         Assert.Contains("🔻 Минимум: +6 °C", html, StringComparison.Ordinal);
         Assert.Contains("🔺 Максимум: +15 °C", html, StringComparison.Ordinal);
@@ -64,15 +90,39 @@ public sealed class WeatherFormatterTests
         Assert.Contains("🌧 Вероятность осадков: 40% (около 1.2 мм)", html, StringComparison.Ordinal);
         Assert.Contains("💧 Влажность: 63%", html, StringComparison.Ordinal);
         Assert.Contains("💨 Ветер: до 7.5 м/с, порывы до 12.4 м/с", html, StringComparison.Ordinal);
-        Assert.Contains("<i>Источник: OpenWeatherMap</i>", html, StringComparison.Ordinal);
+        Assert.Contains("<i>Источник: WeatherAPI.com</i>", html, StringComparison.Ordinal);
+        // Часовых записей нет — блок «По часам» не выводится.
+        Assert.DoesNotContain("По часам", html, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void ToHtml_FormatsHourlyForecast()
+    {
+        var html = WeatherFormatter.ToHtml(Forecast(DailyWithHours()));
+
+        Assert.Contains("<b>По часам</b>", html, StringComparison.Ordinal);
+        Assert.Contains(
+            "00:00 ☀️ +6° (ощущ. +4°) · ясно · ветер 3 м/с · осадки 0%",
+            html,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "13:00 🌧️ +15° (ощущ. +14°) · лёгкий дождь · ветер 4.2 м/с · осадки 60% (0.4 мм)",
+            html,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "22:00 🌙 +8° (ощущ. +6°) · ясно · ветер 2 м/с · осадки 0%",
+            html,
+            StringComparison.Ordinal);
     }
 
     [Fact]
     public void ToPlainText_ContainsNoMarkup()
     {
-        var text = WeatherFormatter.ToPlainText(Forecast());
+        var text = WeatherFormatter.ToPlainText(Forecast(DailyWithHours()));
 
         Assert.Contains("Погода на завтра — 26 сентября (суббота)", text, StringComparison.Ordinal);
+        Assert.Contains("По часам", text, StringComparison.Ordinal);
+        Assert.Contains("Источник: WeatherAPI.com", text, StringComparison.Ordinal);
         Assert.DoesNotContain("<b>", text, StringComparison.Ordinal);
         Assert.DoesNotContain("</b>", text, StringComparison.Ordinal);
         Assert.DoesNotContain("<i>", text, StringComparison.Ordinal);
@@ -99,6 +149,16 @@ public sealed class WeatherFormatterTests
     }
 
     [Fact]
+    public void ToHtml_SkipsGust_WhenGustIsNotStrongerThanWind()
+    {
+        var daily = Samples.Daily(Date) with { MaxWindSpeed = 12, MaxWindGust = 11.1 };
+        var html = WeatherFormatter.ToHtml(Forecast(daily));
+
+        Assert.Contains("💨 Ветер: до 12 м/с", html, StringComparison.Ordinal);
+        Assert.DoesNotContain("порывы", html, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void ToHtml_EscapesCityAndDescription()
     {
         var daily = Samples.Daily(Date) with { Description = "гроза <сильная>" };
@@ -110,11 +170,35 @@ public sealed class WeatherFormatterTests
     }
 
     [Fact]
+    public void ToHtml_EscapesHourlyDescription()
+    {
+        var daily = Samples.Daily(
+            Date,
+            hours: [Samples.Hourly(12, description: "гроза <сильная>")]);
+
+        var html = WeatherFormatter.ToHtml(Forecast(daily));
+
+        Assert.Contains("· гроза &lt;сильная&gt; ·", html, StringComparison.Ordinal);
+        Assert.DoesNotContain("<сильная>", html, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void ToPlainText_KeepsRawCharacters()
     {
         var text = WeatherFormatter.ToPlainText(Forecast(city: "A&B", country: null));
 
         Assert.Contains("📍 A&B", text, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void ToHtml_DoesNotMentionSunTimes()
+    {
+        var html = WeatherFormatter.ToHtml(Forecast(DailyWithHours()));
+
+        foreach (var fragment in new[] { "восход", "Восход", "закат", "Закат", "катат", "Катат" })
+        {
+            Assert.DoesNotContain(fragment, html, StringComparison.Ordinal);
+        }
     }
 
     [Fact]
